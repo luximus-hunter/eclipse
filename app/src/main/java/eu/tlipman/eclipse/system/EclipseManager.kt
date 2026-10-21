@@ -156,9 +156,18 @@ class EclipseManager(
     suspend fun applySunsetToSunriseSchedule(): ManagerResult =
         applySchedule(ScheduleMode.SUNSET_TO_SUNRISE, null)
 
+    suspend fun reapplySavedSchedule(): ManagerResult {
+        val scheduleMode = store.scheduleMode
+        val times = if (scheduleMode == ScheduleMode.CUSTOM_TIMES) {
+            ScheduleTimes(store.darkStart, store.lightStart)
+        } else null
+        return applySchedule(scheduleMode, times, forceApply = true)
+    }
+
     private suspend fun applySchedule(
         scheduleMode: ScheduleMode,
-        times: ScheduleTimes?
+        times: ScheduleTimes?,
+        forceApply: Boolean = false
     ): ManagerResult {
         val requestedTimes = if (scheduleMode == ScheduleMode.CUSTOM_TIMES) {
             times ?: return ManagerResult("Custom schedule times are required.", false)
@@ -187,7 +196,7 @@ class EclipseManager(
                         manager.customNightModeEnd == requestedTimes.lightStart
                 ScheduleMode.SUNSET_TO_SUNRISE -> manager.nightMode == targetNightMode
             }
-            if (alreadyConfigured) {
+            if (alreadyConfigured && !forceApply) {
                 recordAppliedSchedule(scheduleMode, targetNightMode, requestedTimes)
                 return ManagerResult(
                     if (scheduleMode == ScheduleMode.SUNSET_TO_SUNRISE) {

@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.util.Log
 import eu.tlipman.eclipse.shizuku.ShizukuShell
 import eu.tlipman.eclipse.system.EclipseManager
+import eu.tlipman.eclipse.system.ManagerResult
 import eu.tlipman.eclipse.system.EclipseStore
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -16,13 +17,13 @@ import rikka.shizuku.Shizuku
 class EclipseApplication : Application() {
     private val applicationScope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, error ->
-            Log.e(TAG, "Could not apply Battery Saver protection on Shizuku startup.", error)
+            Log.e(TAG, "Could not apply Eclipse settings on Shizuku startup.", error)
         }
     )
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
         applicationScope.launch {
-            applyBatterySaverProtectionIfEnabled()
+            applyEnabledSettingsIfEnabled()
         }
     }
 
@@ -31,7 +32,7 @@ class EclipseApplication : Application() {
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
     }
 
-    private suspend fun applyBatterySaverProtectionIfEnabled() {
+    private suspend fun applyEnabledSettingsIfEnabled() {
         val store = EclipseStore(this)
         if (!store.overrideEnabled) return
         if (!Shizuku.pingBinder()) {
@@ -50,11 +51,19 @@ class EclipseApplication : Application() {
             return
         }
 
-        val result = EclipseManager(this, ShizukuShell(), store).maintainOverride()
+        val manager = EclipseManager(this, ShizukuShell(), store)
+        logStartupResult("Battery Saver protection", manager.maintainOverride())
+        if (store.overrideEnabled && store.scheduleEnabled) {
+            logStartupResult("Android schedule", manager.reapplySavedSchedule())
+        }
+    }
+
+    private fun logStartupResult(feature: String, result: ManagerResult) {
+        val message = "$feature: ${result.message}"
         if (result.success) {
-            Log.i(TAG, result.message)
+            Log.i(TAG, message)
         } else {
-            Log.e(TAG, result.message)
+            Log.e(TAG, message)
         }
     }
 
