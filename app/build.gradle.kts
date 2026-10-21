@@ -53,7 +53,7 @@ android {
             }
             optimization {
                 enable = true
-                packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
+                packageScope = setOf("eu.tlipman.eclipse.**")
             }
         }
     }
