@@ -35,7 +35,7 @@ Shizuku must remain connected and Eclipse must retain Shizuku permission for Ecl
 
 On **Status**, turn on **Battery Saver protection**. Eclipse saves the original Battery Saver configuration and changes only its `enable_night_mode` entry, preserving other configuration entries. Android's own appearance schedule can then control Light/Dark mode while Battery Saver is active.
 
-Eclipse checks this setting while the app is open and can reapply the protection if the managed entry is no longer disabled. The app does not replace Android's schedule or continuously run a separate schedule service.
+Eclipse checks this setting while the app is open and can reapply the protection if the managed entry is no longer disabled. It also refreshes when the system appearance changes while Eclipse is open. The app does not replace Android's schedule or continuously run a separate schedule service.
 
 ### Android's native schedule
 

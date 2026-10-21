@@ -13,6 +13,7 @@
         android:theme="@style/Theme.Eclipse">
         <activity
             android:name=".MainActivity"
+            android:configChanges="uiMode"
             android:exported="true"
             android:theme="@style/Theme.Eclipse"
             android:windowSoftInputMode="adjustResize">
