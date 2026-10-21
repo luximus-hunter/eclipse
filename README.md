@@ -5,7 +5,7 @@ Eclipse is an Android app for keeping Android's Light/Dark appearance schedule i
 ## Features
 
 - **Battery Saver protection** — prevents Battery Saver from overriding the device's Light/Dark appearance by setting `enable_night_mode=false` in Android's `battery_saver_constants` global setting.
-- **Native Android schedule** — configures Android's built-in custom schedule with separate dark-mode and light-mode start times, including schedules that cross midnight.
+- **Native Android schedule** — follows sunset to sunrise using Android's automatic mode or configures custom dark-mode and light-mode start times, including schedules that cross midnight.
 - **Live status** — shows Shizuku access, Battery Saver state, current appearance, protection status, and Android's schedule.
 - **Apply / verify** — checks enabled features and reapplies their settings when needed.
 - **Safe restoration** — saves the previous values and verifies system changes. On restore, settings changed by another app or Android are left untouched. If Battery Saver configuration has changed externally, you can choose to restore only Eclipse's `enable_night_mode` entry while preserving other entries.
@@ -39,7 +39,7 @@ Eclipse checks this setting while the app is open and can reapply the protection
 
 ### Android's native schedule
 
-On **Schedule**, choose **Dark mode starts** and **Light mode starts**, then turn on **Use Android's schedule**. Eclipse applies the times to Android's native custom schedule. Time edits are saved for the next activation when the schedule is off, and applied immediately when it is on.
+On **Schedule**, choose **Sunset to sunrise** to let Android follow its built-in twilight schedule, or choose **Custom times** and set when dark mode starts and light mode returns. Turn on **Use Android's schedule** to apply the selection. Eclipse relies on Android to determine sunset and sunrise; it does not calculate them itself. Changes are saved for the next activation when the schedule is off, and applied immediately when it is on.
 
 The two start times must be different. Android may defer a scheduled appearance change while the screen is in use, applying it after the screen turns off or a screensaver starts.
 
@@ -137,6 +137,6 @@ The unit tests cover Battery Saver configuration parsing and safe restoration, s
 - **Minimum SDK:** 26
 - **Target SDK:** 37
 - **System access:** Shizuku API and Android shell commands
-- **Local state:** app-private preferences for feature toggles, selected times, and restoration snapshots
+- **Local state:** app-private preferences for feature toggles, schedule type and times, and restoration snapshots
 
 Dependency versions are maintained in `gradle/libs.versions.toml`.

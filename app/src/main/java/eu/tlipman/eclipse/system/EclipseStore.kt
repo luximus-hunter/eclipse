@@ -21,6 +21,14 @@ class EclipseStore(context: Context) {
         set(value) {
             commit { putBoolean("schedule_enabled", value) }
         }
+    var scheduleMode: ScheduleMode
+        get() = when (prefs.getString("schedule_mode", null)) {
+            ScheduleMode.SUNSET_TO_SUNRISE.name -> ScheduleMode.SUNSET_TO_SUNRISE
+            else -> ScheduleMode.CUSTOM_TIMES
+        }
+        set(value) {
+            commit { putString("schedule_mode", value.name) }
+        }
     var lastAppliedConfig: String?
         get() = prefs.getString("last_applied_config", null)
         set(value) {
@@ -75,6 +83,7 @@ class EclipseStore(context: Context) {
             remove("last_dark_minute")
             remove("last_light_hour")
             remove("last_light_minute")
+            remove("last_schedule_night_mode")
         }
     }
 
@@ -94,6 +103,16 @@ class EclipseStore(context: Context) {
         set(value) {
             commit {
                 if (value == null) remove("original_mode") else putInt("original_mode", value)
+            }
+        }
+    var lastScheduleNightMode: Int?
+        get() = if (prefs.contains("last_schedule_night_mode")) {
+            prefs.getInt("last_schedule_night_mode", 0)
+        } else null
+        set(value) {
+            commit {
+                if (value == null) remove("last_schedule_night_mode")
+                else putInt("last_schedule_night_mode", value)
             }
         }
     var originalDarkStart: LocalTime?

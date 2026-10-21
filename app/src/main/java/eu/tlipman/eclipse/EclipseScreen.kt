@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import eu.tlipman.eclipse.system.ScheduleMode
 import java.time.LocalTime
 
 private enum class AppPage(
@@ -42,10 +43,12 @@ private enum class AppPage(
 @Composable
 internal fun EclipseScreen(
     state: ScreenState,
+    scheduleMode: ScheduleMode,
     darkStart: LocalTime,
     lightStart: LocalTime,
     onOverrideChange: (Boolean) -> Unit,
     onScheduleChange: (Boolean) -> Unit,
+    onScheduleModeChange: (ScheduleMode) -> Unit,
     onDarkTime: (LocalTime) -> Unit,
     onLightTime: (LocalTime) -> Unit,
     onApply: () -> Unit,
@@ -100,9 +103,11 @@ internal fun EclipseScreen(
                 )
                 AppPage.Schedule -> SchedulePage(
                     state = state,
+                    scheduleMode = scheduleMode,
                     darkStart = darkStart,
                     lightStart = lightStart,
                     onScheduleChange = onScheduleChange,
+                    onScheduleModeChange = onScheduleModeChange,
                     onDarkTime = onDarkTime,
                     onLightTime = onLightTime
                 )

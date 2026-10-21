@@ -128,7 +128,10 @@ internal fun StatusPage(
                 icon = Icons.Outlined.Schedule,
                 title = "Android schedule",
                 value = compactScheduleStatus(state.scheduleStatus),
-                positive = if (state.scheduleStatus.startsWith("Custom schedule")) true else null
+                positive = if (
+                    state.scheduleStatus.startsWith("Custom schedule") ||
+                    state.scheduleStatus == "Sunset to sunrise"
+                ) true else null
             )
             if (state.configConflictDetected && !state.overrideEnabled) {
                 Row(

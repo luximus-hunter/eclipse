@@ -150,8 +150,20 @@ class EclipseManager(
         }
     }
 
-    suspend fun applySchedule(times: ScheduleTimes): ManagerResult {
-        times.validate()?.let { return ManagerResult(it, false) }
+    suspend fun applySchedule(times: ScheduleTimes): ManagerResult =
+        applySchedule(ScheduleMode.CUSTOM_TIMES, times)
+
+    suspend fun applySunsetToSunriseSchedule(): ManagerResult =
+        applySchedule(ScheduleMode.SUNSET_TO_SUNRISE, null)
+
+    private suspend fun applySchedule(
+        scheduleMode: ScheduleMode,
+        times: ScheduleTimes?
+    ): ManagerResult {
+        val requestedTimes = if (scheduleMode == ScheduleMode.CUSTOM_TIMES) {
+            times ?: return ManagerResult("Custom schedule times are required.", false)
+        } else null
+        requestedTimes?.validate()?.let { return ManagerResult(it, false) }
         return try {
             val manager = uiModeManager()
             if (!store.hasScheduleBackup) {
@@ -162,39 +174,60 @@ class EclipseManager(
                 }
                 store.markScheduleBackupSaved()
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                manager.nightMode == UiModeManager.MODE_NIGHT_CUSTOM &&
-                manager.customNightModeStart == times.darkStart &&
-                manager.customNightModeEnd == times.lightStart
-            ) {
-                store.darkStart = times.darkStart
-                store.lightStart = times.lightStart
-                store.lastScheduleDarkStart = times.darkStart
-                store.lastScheduleLightStart = times.lightStart
-                store.scheduleEnabled = true
-                return ManagerResult("Native Android schedule is already configured and verified.", true)
+            val targetNightMode = when (scheduleMode) {
+                ScheduleMode.CUSTOM_TIMES -> UiModeManager.MODE_NIGHT_CUSTOM
+                ScheduleMode.SUNSET_TO_SUNRISE -> UiModeManager.MODE_NIGHT_AUTO
             }
-            run(
-                "cmd uimode time start ${times.darkStartText()} " +
-                    "&& cmd uimode time end ${times.lightStartText()} " +
-                    "&& cmd uimode night custom_schedule"
-            )
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                (manager.nightMode != UiModeManager.MODE_NIGHT_CUSTOM ||
-                    manager.customNightModeStart != times.darkStart ||
-                    manager.customNightModeEnd != times.lightStart)
-            ) {
+            val alreadyConfigured = when (scheduleMode) {
+                ScheduleMode.CUSTOM_TIMES ->
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                        requestedTimes != null &&
+                        manager.nightMode == targetNightMode &&
+                        manager.customNightModeStart == requestedTimes.darkStart &&
+                        manager.customNightModeEnd == requestedTimes.lightStart
+                ScheduleMode.SUNSET_TO_SUNRISE -> manager.nightMode == targetNightMode
+            }
+            if (alreadyConfigured) {
+                recordAppliedSchedule(scheduleMode, targetNightMode, requestedTimes)
+                return ManagerResult(
+                    if (scheduleMode == ScheduleMode.SUNSET_TO_SUNRISE) {
+                        "Android's sunset-to-sunrise schedule is already configured and verified."
+                    } else {
+                        "Native Android schedule is already configured and verified."
+                    },
+                    true
+                )
+            }
+            when (scheduleMode) {
+                ScheduleMode.CUSTOM_TIMES -> {
+                    val customTimes = requireNotNull(requestedTimes)
+                    run(
+                        "cmd uimode time start ${customTimes.darkStartText()} " +
+                            "&& cmd uimode time end ${customTimes.lightStartText()} " +
+                            "&& cmd uimode night custom_schedule"
+                    )
+                }
+                ScheduleMode.SUNSET_TO_SUNRISE -> run("cmd uimode night auto")
+            }
+            val timesAreVerified = Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
+                requestedTimes == null ||
+                (manager.customNightModeStart == requestedTimes.darkStart &&
+                    manager.customNightModeEnd == requestedTimes.lightStart)
+            if (manager.nightMode != targetNightMode || !timesAreVerified) {
                 error("Android did not report the requested native schedule after applying it.")
             }
-            store.darkStart = times.darkStart
-            store.lightStart = times.lightStart
-            store.lastScheduleDarkStart = times.darkStart
-            store.lastScheduleLightStart = times.lightStart
-            store.scheduleEnabled = true
-            ManagerResult(
-                "Native Android schedule is configured and verified. Android may defer the visible change until the screen turns off.",
-                true
-            )
+            recordAppliedSchedule(scheduleMode, targetNightMode, requestedTimes)
+            if (scheduleMode == ScheduleMode.SUNSET_TO_SUNRISE) {
+                ManagerResult(
+                    "Android's sunset-to-sunrise schedule is configured and verified.",
+                    true
+                )
+            } else {
+                ManagerResult(
+                    "Native Android schedule is configured and verified. Android may defer the visible change until the screen turns off.",
+                    true
+                )
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -232,10 +265,12 @@ class EclipseManager(
         val oldMode = store.originalMode
         val oldStart = store.originalDarkStart
         val oldEnd = store.originalLightStart
+        val lastMode = store.lastScheduleNightMode ?: UiModeManager.MODE_NIGHT_CUSTOM
         val lastStart = store.lastScheduleDarkStart
         val lastEnd = store.lastScheduleLightStart
         if (oldMode == null || oldStart == null || oldEnd == null ||
-            lastStart == null || lastEnd == null
+            (lastMode == UiModeManager.MODE_NIGHT_CUSTOM &&
+                (lastStart == null || lastEnd == null))
         ) {
             store.scheduleEnabled = false
             return ManagerResult(
@@ -245,11 +280,13 @@ class EclipseManager(
         }
         return try {
             val manager = uiModeManager()
-            val modeIsUnchanged = manager.nightMode == UiModeManager.MODE_NIGHT_CUSTOM ||
-                manager.nightMode == UiModeManager.MODE_NIGHT_NO
+            val modeIsUnchanged = manager.nightMode == UiModeManager.MODE_NIGHT_NO ||
+                manager.nightMode == lastMode
+            val timesAreUnchanged = lastMode != UiModeManager.MODE_NIGHT_CUSTOM ||
+                (manager.customNightModeStart == lastStart &&
+                    manager.customNightModeEnd == lastEnd)
             if (!modeIsUnchanged ||
-                manager.customNightModeStart != lastStart ||
-                manager.customNightModeEnd != lastEnd
+                !timesAreUnchanged
             ) {
                 store.scheduleEnabled = false
                 return ManagerResult("The native schedule changed outside Eclipse; it was left untouched.", false)
@@ -278,16 +315,17 @@ class EclipseManager(
     }
 
     fun scheduleStatus(): String {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val manager = uiModeManager()
-            when (manager.nightMode) {
-                UiModeManager.MODE_NIGHT_CUSTOM ->
+        val manager = uiModeManager()
+        return when (manager.nightMode) {
+            UiModeManager.MODE_NIGHT_AUTO -> "Sunset to sunrise"
+            UiModeManager.MODE_NIGHT_CUSTOM ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     "Custom schedule · dark ${manager.customNightModeStart.format(TIME_FORMAT)} · light ${manager.customNightModeEnd.format(TIME_FORMAT)}"
-                UiModeManager.MODE_NIGHT_NO -> "None"
-                else -> "Android mode: ${modeName(manager.nightMode)}"
-            }
-        } else {
-            "Exact schedule details require Android 11 or later."
+                } else {
+                    "Custom schedule (times unavailable)"
+                }
+            UiModeManager.MODE_NIGHT_NO -> "None"
+            else -> "Android mode: ${modeName(manager.nightMode)}"
         }
     }
 
@@ -312,6 +350,22 @@ class EclipseManager(
     private suspend fun run(command: String): ShellResult =
         shell.run(command).also(::requireSuccess)
 
+    private fun recordAppliedSchedule(
+        scheduleMode: ScheduleMode,
+        nightMode: Int,
+        times: ScheduleTimes?
+    ) {
+        store.scheduleMode = scheduleMode
+        store.lastScheduleNightMode = nightMode
+        if (times != null) {
+            store.darkStart = times.darkStart
+            store.lightStart = times.lightStart
+            store.lastScheduleDarkStart = times.darkStart
+            store.lastScheduleLightStart = times.lightStart
+        }
+        store.scheduleEnabled = true
+    }
+
     private fun requireSuccess(result: ShellResult) {
         check(result.successful) { result.summary }
     }
@@ -324,7 +378,7 @@ class EclipseManager(
         UiModeManager.MODE_NIGHT_CUSTOM -> "Custom schedule"
         UiModeManager.MODE_NIGHT_NO -> "Light"
         UiModeManager.MODE_NIGHT_YES -> "Dark"
-        UiModeManager.MODE_NIGHT_AUTO -> "Automatic"
+        UiModeManager.MODE_NIGHT_AUTO -> "Sunset to sunrise"
         else -> "Unknown ($mode)"
     }
 

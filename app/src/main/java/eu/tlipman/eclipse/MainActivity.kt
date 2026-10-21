@@ -56,6 +56,7 @@ import eu.tlipman.eclipse.system.BatterySaverConfig
 import eu.tlipman.eclipse.system.ManagerResult
 import eu.tlipman.eclipse.system.EclipseManager
 import eu.tlipman.eclipse.system.EclipseStore
+import eu.tlipman.eclipse.system.ScheduleMode
 import eu.tlipman.eclipse.system.ScheduleTimes
 import eu.tlipman.eclipse.ui.theme.EclipseTheme
 import kotlinx.coroutines.launch
@@ -68,6 +69,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var store: EclipseStore
     private lateinit var manager: EclipseManager
     private var screen by mutableStateOf(ScreenState())
+    private var scheduleMode by mutableStateOf(ScheduleMode.CUSTOM_TIMES)
     private var darkStart by mutableStateOf(LocalTime.of(19, 30))
     private var lightStart by mutableStateOf(LocalTime.of(6, 30))
     private var dialog by mutableStateOf<String?>(null)
@@ -106,6 +108,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         store = EclipseStore(this)
         manager = EclipseManager(this, ShizukuShell(), store)
+        scheduleMode = store.scheduleMode
         darkStart = store.darkStart
         lightStart = store.lightStart
         manager.customScheduleTimes()?.let { times ->
@@ -126,10 +129,12 @@ class MainActivity : ComponentActivity() {
             EclipseTheme {
                 EclipseScreen(
                     state = screen,
+                    scheduleMode = scheduleMode,
                     darkStart = darkStart,
                     lightStart = lightStart,
                     onOverrideChange = ::setOverrideEnabled,
                     onScheduleChange = ::setScheduleEnabled,
+                    onScheduleModeChange = ::changeScheduleMode,
                     onDarkTime = ::changeDarkStart,
                     onLightTime = ::changeLightStart,
                     onApply = ::applyNow,
@@ -341,6 +346,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun changeScheduleMode(mode: ScheduleMode) {
+        scheduleMode = mode
+        store.scheduleMode = mode
+        if (store.scheduleEnabled) applySchedule()
+    }
+
     private fun changeDarkStart(time: LocalTime) {
         darkStart = time
         store.darkStart = time
@@ -361,9 +372,14 @@ class MainActivity : ComponentActivity() {
             }
             return
         }
+        val selectedMode = scheduleMode
+        val times = ScheduleTimes(darkStart, lightStart)
         screen = screen.copy(busy = true, lastResult = "Applying and verifying Android's native schedule…")
         lifecycleScope.launch {
-            val result = manager.applySchedule(ScheduleTimes(darkStart, lightStart))
+            val result = when (selectedMode) {
+                ScheduleMode.CUSTOM_TIMES -> manager.applySchedule(times)
+                ScheduleMode.SUNSET_TO_SUNRISE -> manager.applySunsetToSunriseSchedule()
+            }
             if (rollbackEnableOnFailure && !result.success) store.scheduleEnabled = false
             setResult(result)
             refresh()
@@ -377,10 +393,17 @@ class MainActivity : ComponentActivity() {
             return
         }
         screen = screen.copy(busy = true, lastResult = "Checking Eclipse settings…")
+        val selectedMode = scheduleMode
+        val times = ScheduleTimes(darkStart, lightStart)
         lifecycleScope.launch {
             val results = mutableListOf<ManagerResult>()
             if (store.overrideEnabled) results += manager.maintainOverride()
-            if (store.scheduleEnabled) results += manager.applySchedule(ScheduleTimes(darkStart, lightStart))
+            if (store.scheduleEnabled) {
+                results += when (selectedMode) {
+                    ScheduleMode.CUSTOM_TIMES -> manager.applySchedule(times)
+                    ScheduleMode.SUNSET_TO_SUNRISE -> manager.applySunsetToSunriseSchedule()
+                }
+            }
             val failed = results.firstOrNull { !it.success }
             val result = failed ?: ManagerResult(
                 message = results.joinToString(" ").ifBlank {

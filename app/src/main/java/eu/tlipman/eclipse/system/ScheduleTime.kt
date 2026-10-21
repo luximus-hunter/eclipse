@@ -4,6 +4,11 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 
+enum class ScheduleMode {
+    CUSTOM_TIMES,
+    SUNSET_TO_SUNRISE
+}
+
 data class ScheduleTimes(val darkStart: LocalTime, val lightStart: LocalTime) {
     fun validate(): String? =
         if (darkStart == lightStart) "Start and end times must be different." else null
